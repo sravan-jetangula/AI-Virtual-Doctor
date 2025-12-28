@@ -168,7 +168,7 @@ if st.session_state.page == "welcome":
 
     if st.button("🚀 Start Consultation", use_container_width=True):
         st.session_state.page = "register"
-        rerun()
+        st.experimental_rerun()
 
 # ================= REGISTER =================
 elif st.session_state.page == "register":
@@ -201,7 +201,6 @@ else:
     st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
     if st.button("<<" if st.session_state.show_patient else ">>"):
         st.session_state.show_patient = not st.session_state.show_patient
-        st.experimental_rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.show_patient:
@@ -240,6 +239,7 @@ else:
             if audio:
                 voice_text = voice_to_text(audio, st.session_state.language)
                 if voice_text:
+                    # Append to chat immediately before AI call to avoid lag
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     st.session_state.chat.append({"role":"assistant","content":reply})
