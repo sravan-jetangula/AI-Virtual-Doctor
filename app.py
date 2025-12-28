@@ -70,7 +70,7 @@ st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
 
-# ================= VOICE =================
+# ================= VOICE (UPDATED SAFELY) =================
 def voice_to_text(audio, lang):
     r = sr.Recognizer()
     with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -78,10 +78,13 @@ def voice_to_text(audio, lang):
         path = f.name
     with sr.AudioFile(path) as src:
         data = r.record(src)
-    return r.recognize_google(
-        data,
-        language={"English":"en-IN","Hindi":"hi-IN","Telugu":"te-IN"}.get(lang,"en-IN")
-    )
+    try:
+        return r.recognize_google(
+            data,
+            language={"English":"en-IN","Hindi":"hi-IN","Telugu":"te-IN"}.get(lang,"en-IN")
+        )
+    except:
+        return None
 
 # ================= PDF =================
 def create_pdf(patient, rx):
@@ -145,7 +148,6 @@ Patient: {patient[1]}, {patient[2]} years, {patient[3]}
     )
 
     reply = res.choices[0].message.content.strip()
-
     if "FINAL PRESCRIPTION" in reply.upper():
         st.session_state.final_rx = reply
 
@@ -242,11 +244,13 @@ else:
 
         user_text = st.chat_input("Describe your problem")
 
+        # ✅ UPDATED VOICE HANDLING (SAFE)
         if audio:
-            try:
-                user_text = voice_to_text(audio, st.session_state.language)
-            except:
-                st.warning("Voice unclear, please type")
+            voice_text = voice_to_text(audio, st.session_state.language)
+            if voice_text:
+                user_text = voice_text
+            else:
+                st.warning("⚠️ Voice unclear, please type")
 
         if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
