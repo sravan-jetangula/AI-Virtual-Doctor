@@ -1,6 +1,4 @@
-
 streamlit
 groq
 speechrecognition
-pyaudio
 reportlab
