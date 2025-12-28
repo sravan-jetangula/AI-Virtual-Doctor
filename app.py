@@ -18,13 +18,14 @@ st.set_page_config(page_title="AI Virtual Doctor", page_icon="🩺", layout="wid
 st.markdown("""
 <style>
 body { background-color: #f5f9ff; }
+
 .patient-card, .chat-card, .prescription-card {
     background: white;
     padding: 20px;
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
-    word-wrap: break-word;
 }
+
 .arrow-btn button {
     border-radius: 50%;
     width: 44px;
@@ -34,14 +35,15 @@ body { background-color: #f5f9ff; }
     color: white;
     border: none;
 }
-.arrow-btn button:hover { background-color: #0d47a1; }
+
 .chat-container {
-    height: 500px;
+    height: 420px;
     overflow-y: auto;
     padding: 10px;
     display: flex;
-    flex-direction: column-reverse;  /* latest messages appear on top */
+    flex-direction: column;
 }
+
 .user-msg {
     background-color: #DCF8C6;
     padding: 10px;
@@ -49,8 +51,8 @@ body { background-color: #f5f9ff; }
     margin-bottom: 8px;
     align-self: flex-end;
     max-width: 70%;
-    word-wrap: break-word;
 }
+
 .assistant-msg {
     background-color: #EAEAEA;
     padding: 10px;
@@ -58,7 +60,6 @@ body { background-color: #f5f9ff; }
     margin-bottom: 8px;
     align-self: flex-start;
     max-width: 70%;
-    word-wrap: break-word;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -150,9 +151,8 @@ def doctor_ai(user_text, patient, lang):
     prompt = f"""
 You are a professional medical doctor.
 Ask ONLY ONE question at a time.
-Ask follow-up questions dynamically based on patient answers.
-When sufficient information is collected, provide a FINAL PRESCRIPTION
-with clear headings.
+Ask follow-up questions dynamically.
+Provide FINAL PRESCRIPTION when ready.
 
 Language: {lang}
 Patient: {patient[1]}, {patient[2]} years, {patient[3]}
@@ -211,16 +211,12 @@ else:
     c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
     patient = c.fetchone()
 
-    st.header("💬 Doctor Consultation")
-
     left, right = st.columns([1.5, 3.5])
 
-    # ===== Patient Info Toggle =====
+    # ===== Patient Info =====
     with left:
-        st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
         if st.button("<<" if st.session_state.show_patient else ">>"):
             st.session_state.show_patient = not st.session_state.show_patient
-        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.show_patient:
             st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
@@ -234,26 +230,26 @@ else:
             st.write(f"**Language:** {patient[7]}")
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # ===== Chat =====
+    # ===== Chat Area =====
     with right:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
-        st.subheader("💬 Consultation")
+
+        st.markdown("<h2>🩺 Doctor Consultation</h2>", unsafe_allow_html=True)
 
         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        for m in reversed(st.session_state.chat):  # newest on top
+        for m in st.session_state.chat:
             cls = "user-msg" if m["role"]=="user" else "assistant-msg"
-            st.markdown(f'<div class="{cls}">{m["content"].replace("\n","<br>")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="{cls}">{m["content"].replace("\n","<br>")}</div>',
+                        unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # ===== Typed Input =====
-        user_text = st.chat_input("Type your message", key="chat_input")
+        user_text = st.chat_input("Type your message")
         if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
             st.experimental_rerun()
 
-        # ===== Voice Input =====
         audio = st.audio_input("🎤 Click to record")
         if audio:
             voice_text = voice_to_text(audio, st.session_state.language)
@@ -262,32 +258,13 @@ else:
                 reply = doctor_ai(voice_text, patient, st.session_state.language)
                 st.session_state.chat.append({"role":"assistant","content":reply})
                 st.experimental_rerun()
-            else:
-                st.warning("⚠️ Voice unclear, please try again")
 
-        # ===== File Upload =====
         files = st.file_uploader(
             "📎 Upload Reports / Images",
             accept_multiple_files=True,
-            type=["png","jpg","jpeg","pdf"],
-            key="file_upload"
+            type=["png","jpg","jpeg","pdf"]
         )
         if files:
             st.session_state.uploads.extend(files)
 
-        # ===== Prescription =====
-        if st.session_state.final_rx:
-            st.markdown("<div class='prescription-card'>", unsafe_allow_html=True)
-            st.markdown(f"<h3>📝 Prescription Preview</h3>", unsafe_allow_html=True)
-            st.markdown(st.session_state.final_rx.replace("\n","<br>"), unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            pdf = create_pdf(patient, st.session_state.final_rx)
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    "⬇ Download Prescription PDF",
-                    data=f,
-                    file_name="Prescription.pdf",
-                    mime="application/pdf"
-                )
         st.markdown("</div>", unsafe_allow_html=True)
