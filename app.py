@@ -19,23 +19,17 @@ st.set_page_config(
 st.markdown("""
 <style>
 body { background-color: #f5f9ff; }
+
 .patient-card, .chat-card {
     background: white;
     padding: 20px;
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
 }
-.arrow-btn button {
-    border-radius: 50%;
-    width: 44px;
-    height: 44px;
-    font-size: 20px;
-    background-color: #1565c0;
-    color: white;
-    border: none;
-}
-.arrow-btn button:hover {
-    background-color: #0d47a1;
+
+.toggle-btn button {
+    border-radius: 10px;
+    font-weight: 600;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -64,9 +58,9 @@ conn.commit()
 st.session_state.setdefault("page", "welcome")
 st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
-st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
-st.session_state.setdefault("last_audio_hash", None)  # ✅ NEW
+st.session_state.setdefault("show_patient", True)
+st.session_state.setdefault("last_audio_hash", None)
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -186,11 +180,20 @@ else:
     c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
     patient = c.fetchone()
 
+    # 🔁 TOGGLE BUTTON
+    st.markdown("<div class='toggle-btn'>", unsafe_allow_html=True)
+    if st.button("👁 Hide Patient Info" if st.session_state.show_patient else "👁 Show Patient Info"):
+        st.session_state.show_patient = not st.session_state.show_patient
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Layout
     if st.session_state.show_patient:
         left, right = st.columns([1.5,3.5])
     else:
         right = st.container()
 
+    # Patient Info
     if st.session_state.show_patient:
         with left:
             st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
@@ -204,6 +207,7 @@ else:
             st.write(f"**Language:** {patient[7]}")
             st.markdown("</div>", unsafe_allow_html=True)
 
+    # Chat
     with right:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
         st.subheader("💬 Doctor Consultation")
@@ -219,7 +223,6 @@ else:
 
         user_text = st.chat_input("Describe your problem")
 
-        # ✅ SAFE MIC PROCESSING (NO LOOP)
         if audio:
             h = audio_hash(audio)
             if h != st.session_state.last_audio_hash:
@@ -227,8 +230,6 @@ else:
                 voice_text = voice_to_text(audio, st.session_state.language)
                 if voice_text:
                     user_text = voice_text
-                else:
-                    st.warning("⚠️ Voice unclear, please type")
 
         if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
