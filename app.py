@@ -69,7 +69,8 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
-st.session_state.setdefault("voice_text", None)  # <-- store converted voice
+st.session_state.setdefault("voice_text", None)  # store converted voice
+st.session_state.setdefault("last_user_msg", None)  # prevent duplicate AI calls
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -224,11 +225,13 @@ else:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
         st.subheader("💬 Doctor Consultation")
 
+        # Display chat history
         for m in st.session_state.chat:
             st.chat_message(m["role"]).write(m["content"])
 
         mic, upload = st.columns([1,3])
 
+        # ===== Voice input =====
         with mic:
             audio = st.audio_input("🎤")
             if audio and st.session_state.voice_text is None:
@@ -237,6 +240,7 @@ else:
                 except:
                     st.warning("Voice unclear, please type")
 
+        # ===== File Upload =====
         with upload:
             files = st.file_uploader(
                 "📎 Upload Reports / Images",
@@ -246,15 +250,19 @@ else:
             if files:
                 st.session_state.uploads.extend(files)
 
+        # ===== Get user input (voice or typed) =====
         user_text = st.chat_input("Describe your problem") or st.session_state.voice_text
 
-        if user_text and (not st.session_state.chat or st.session_state.chat[-1]["content"] != user_text):
+        # ===== Prevent duplicate messages =====
+        if user_text and user_text != st.session_state.last_user_msg:
+            st.session_state.last_user_msg = user_text
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
-            st.session_state.voice_text = None  # reset after using voice once
+            st.session_state.voice_text = None  # clear after first use
             st.rerun()
 
+        # ===== Download PDF =====
         if st.session_state.final_rx:
             pdf = create_pdf(patient, st.session_state.final_rx)
             with open(pdf, "rb") as f:
