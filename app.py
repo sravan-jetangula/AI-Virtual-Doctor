@@ -37,9 +37,7 @@ body { background-color: #f5f9ff; }
     color: white;
     border: none;
 }
-.arrow-btn button:hover {
-    background-color: #0d47a1;
-}
+.arrow-btn button:hover { background-color: #0d47a1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,7 +114,6 @@ Date: {datetime.now().strftime('%d-%b-%Y')}
 """, styles["Normal"]))
 
     story.append(Spacer(1,12))
-
     for part in rx.split("\n\n"):
         story.append(Paragraph(part.replace("\n","<br/>"), styles["Normal"]))
         story.append(Spacer(1,10))
@@ -150,7 +147,6 @@ Patient: {patient[1]}, {patient[2]} years, {patient[3]}
     )
 
     reply = res.choices[0].message.content.strip()
-
     if "FINAL PRESCRIPTION" in reply.upper():
         st.session_state.final_rx = reply
 
@@ -168,7 +164,6 @@ if st.session_state.page == "welcome":
 
     if st.button("🚀 Start Consultation", use_container_width=True):
         st.session_state.page = "register"
-        st.experimental_rerun()
 
 # ================= REGISTER =================
 elif st.session_state.page == "register":
@@ -190,7 +185,6 @@ elif st.session_state.page == "register":
         st.session_state.pid = pid
         st.session_state.language = lang
         st.session_state.page = "consult"
-        st.experimental_rerun()
 
 # ================= CONSULT =================
 else:
@@ -239,7 +233,6 @@ else:
             if audio:
                 voice_text = voice_to_text(audio, st.session_state.language)
                 if voice_text:
-                    # Append to chat immediately before AI call to avoid lag
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     st.session_state.chat.append({"role":"assistant","content":reply})
