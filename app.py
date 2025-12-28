@@ -1,258 +1,108 @@
-import os, uuid, sqlite3, tempfile
 import streamlit as st
-import speech_recognition as sr
-from groq import Groq
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from datetime import datetime
+from ai_agent import get_ai_response
+from voice import get_voice_input
 
-# ================= PAGE CONFIG =================
-st.set_page_config(page_title="AI Virtual Doctor", page_icon="🩺", layout="wide")
-
-# ================= CSS =================
-st.markdown("""
-<style>
-body { background-color: #f5f9ff; }
-
-.patient-card {
-    background: white;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
-}
-
-.chat-card {
-    background: white;
-    padding: 15px;
-    border-radius: 15px;
-    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
-}
-
-.arrow-btn button {
-    border-radius: 50%;
-    width: 42px;
-    height: 42px;
-    font-size: 20px;
-    background-color: #1565c0;
-    color: white;
-    border: none;
-}
-
-.arrow-btn button:hover {
-    background-color: #0d47a1;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ================= GROQ =================
-API_KEY = os.getenv("GROQ_API_KEY")
-if not API_KEY:
-    st.error("❌ GROQ_API_KEY not set")
-    st.stop()
-
-client = Groq(api_key=API_KEY)
-
-# ================= DATABASE =================
-conn = sqlite3.connect("patients.db", check_same_thread=False)
-c = conn.cursor()
-c.execute("""
-CREATE TABLE IF NOT EXISTS patients(
-id TEXT PRIMARY KEY,
-name TEXT, age INT, gender TEXT,
-phone TEXT, weight TEXT, allergy TEXT, language TEXT
+# -------------------------------
+# Page Configuration
+# -------------------------------
+st.set_page_config(
+    page_title="AI Virtual Doctor",
+    page_icon="🩺",
+    layout="centered"
 )
-""")
-conn.commit()
 
-# ================= SESSION =================
-st.session_state.setdefault("page", "welcome")
-st.session_state.setdefault("chat", [])
-st.session_state.setdefault("final_rx", None)
-st.session_state.setdefault("show_patient", True)
+# -------------------------------
+# Session State
+# -------------------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# ================= VOICE =================
-def voice_to_text(audio, lang):
-    r = sr.Recognizer()
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        f.write(audio.read())
-        path = f.name
-    with sr.AudioFile(path) as src:
-        data = r.record(src)
-    return r.recognize_google(
-        data,
-        language={"English":"en-IN","Hindi":"hi-IN","Telugu":"te-IN"}.get(lang,"en-IN")
-    )
+# -------------------------------
+# Header
+# -------------------------------
+st.markdown(
+    """
+    <h1 style="text-align:center; color:#2E86C1;">🩺 AI Virtual Doctor</h1>
+    <p style="text-align:center;">
+        Describe your symptoms and receive AI-powered guidance.<br>
+        <b>This tool is for educational purposes only.</b>
+    </p>
+    <hr>
+    """,
+    unsafe_allow_html=True
+)
 
-# ================= PDF =================
-def create_pdf(patient, rx):
-    file = "Prescription.pdf"
-    doc = SimpleDocTemplate(
-        file,
-        pagesize=A4,
-        rightMargin=2*cm,
-        leftMargin=2*cm,
-        topMargin=2*cm,
-        bottomMargin=2*cm
-    )
-    styles = getSampleStyleSheet()
-    story = []
+# -------------------------------
+# Patient Input Section
+# -------------------------------
+st.subheader("💬 Doctor Consultation")
 
-    story.append(Paragraph("<b>AI VIRTUAL DOCTOR – PRESCRIPTION</b>", styles["Title"]))
-    story.append(Spacer(1,12))
+user_input = st.text_input(
+    "Describe your symptoms:",
+    placeholder="Example: I have fever and headache for 2 days"
+)
 
-    story.append(Paragraph(f"""
-<b>Patient Details</b><br/>
-Name: {patient[1]}<br/>
-Age/Gender: {patient[2]} / {patient[3]}<br/>
-Phone: {patient[4]}<br/>
-Weight: {patient[5]} kg<br/>
-Allergy: {patient[6]}<br/>
-Date: {datetime.now().strftime('%d-%b-%Y')}
-""", styles["Normal"]))
+# Optional (disabled) voice input
+with st.expander("🎤 Voice Input (Cloud Limitation)"):
+    voice_text = get_voice_input()
+    if voice_text:
+        user_input = voice_text
 
-    story.append(Spacer(1,12))
+# -------------------------------
+# Submit Button
+# -------------------------------
+if st.button("🧠 Get Medical Advice"):
 
-    for part in rx.split("\n\n"):
-        story.append(Paragraph(part.replace("\n","<br/>"), styles["Normal"]))
-        story.append(Spacer(1,10))
-
-    story.append(Spacer(1,20))
-    story.append(Paragraph("<b>Doctor Signature</b><br/>AI Virtual Doctor", styles["Normal"]))
-
-    doc.build(story)
-    return file
-
-# ================= AI =================
-def doctor_ai(text, patient, lang):
-    prompt = f"""
-You are a professional medical doctor.
-Ask ONE relevant question at a time.
-Ask follow-up questions based on patient answers.
-When enough info is collected, provide FINAL PRESCRIPTION.
-
-Language: {lang}
-Patient: {patient[1]}, {patient[2]} years, {patient[3]}
-"""
-    messages = [{"role":"system","content":prompt}] + st.session_state.chat
-    messages.append({"role":"user","content":text})
-
-    res = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=messages,
-        temperature=0.2,
-        max_tokens=600
-    )
-
-    reply = res.choices[0].message.content.strip()
-
-    # ✅ FIXED FINAL RX DETECTION
-    if "FINAL PRESCRIPTION" in reply.upper():
-        st.session_state.final_rx = reply
-
-    return reply
-
-# ================= WELCOME =================
-if st.session_state.page == "welcome":
-    st.markdown("""
-    <div style="background:linear-gradient(135deg,#1565c0,#42a5f5);
-    padding:60px;border-radius:25px;color:white;text-align:center;">
-    <h1>🩺 AI Virtual Doctor</h1>
-    <p>Smart • Professional • Reliable</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if st.button("🚀 Start Consultation", use_container_width=True):
-        st.session_state.page = "register"
-        st.rerun()
-
-# ================= REGISTER =================
-elif st.session_state.page == "register":
-    st.header("📝 Patient Registration")
-    name = st.text_input("Name")
-    age = st.number_input("Age",1,120)
-    gender = st.selectbox("Gender",["Male","Female"])
-    phone = st.text_input("Phone")
-    weight = st.text_input("Weight")
-    allergy = st.text_input("Allergy")
-    lang = st.selectbox("Language",["English","Hindi","Telugu"])
-
-    if st.button("Proceed"):
-        pid = str(uuid.uuid4())[:8]
-        c.execute("INSERT INTO patients VALUES (?,?,?,?,?,?,?,?)",
-                  (pid,name,age,gender,phone,weight,allergy,lang))
-        conn.commit()
-        st.session_state.pid = pid
-        st.session_state.language = lang
-        st.session_state.page = "consult"
-        st.rerun()
-
-# ================= CONSULT =================
-else:
-    c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
-    patient = c.fetchone()
-
-    st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
-    if st.button("<<" if st.session_state.show_patient else ">>"):
-        st.session_state.show_patient = not st.session_state.show_patient
-        st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    if st.session_state.show_patient:
-        left, right = st.columns([1.4, 3.6])
+    if not user_input.strip():
+        st.warning("Please enter your symptoms.")
     else:
-        right = st.container()
+        # Save user message
+        st.session_state.chat_history.append(
+            {"role": "user", "content": user_input}
+        )
 
-    if st.session_state.show_patient:
-        with left:
-            st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
-            st.subheader("👤 Patient Information")
-            st.write(f"**Name:** {patient[1]}")
-            st.write(f"**Age:** {patient[2]}")
-            st.write(f"**Gender:** {patient[3]}")
-            st.write(f"**Phone:** {patient[4]}")
-            st.write(f"**Weight:** {patient[5]} kg")
-            st.write(f"**Allergy:** {patient[6]}")
-            st.write(f"**Language:** {patient[7]}")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    with right:
-        st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
-        st.subheader("💬 Doctor Consultation")
-
-        for m in st.session_state.chat:
-            st.chat_message(m["role"]).write(m["content"])
-
-        mic, upload = st.columns([1,3])
-        with mic:
-            audio = st.audio_input("🎤")
-        with upload:
-            st.file_uploader("📎 Reports / Images", accept_multiple_files=True)
-
-        user_text = st.chat_input("Describe your problem")
-
-        if audio:
+        # Get AI response
+        with st.spinner("Analyzing your symptoms..."):
             try:
-                user_text = voice_to_text(audio, st.session_state.language)
-            except:
-                st.warning("Voice unclear, please type")
+                ai_reply = get_ai_response(user_input)
+            except Exception as e:
+                ai_reply = "⚠️ Sorry, something went wrong while processing your request."
 
-        if user_text:
-            st.session_state.chat.append({"role":"user","content":user_text})
-            reply = doctor_ai(user_text, patient, st.session_state.language)
-            st.session_state.chat.append({"role":"assistant","content":reply})
-            st.rerun()
+        # Save AI response
+        st.session_state.chat_history.append(
+            {"role": "assistant", "content": ai_reply}
+        )
 
-        
-        if st.session_state.final_rx:
-            pdf = create_pdf(patient, st.session_state.final_rx)
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    label="⬇ Download Prescription PDF",
-                    data=f,
-                    file_name="Prescription.pdf",
-                    mime="application/pdf"
-                )
+# -------------------------------
+# Chat History Display
+# -------------------------------
+if st.session_state.chat_history:
+    st.subheader("🗂 Consultation History")
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(
+                f"<div style='background:#D6EAF8; padding:10px; border-radius:10px; margin-bottom:5px;'>"
+                f"<b>👤 You:</b> {msg['content']}</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f"<div style='background:#E8F8F5; padding:10px; border-radius:10px; margin-bottom:10px;'>"
+                f"<b>🤖 Doctor AI:</b> {msg['content']}</div>",
+                unsafe_allow_html=True
+            )
+
+# -------------------------------
+# Footer
+# -------------------------------
+st.markdown(
+    """
+    <hr>
+    <p style="text-align:center; font-size:13px;">
+        ⚠️ This AI does not replace a licensed medical professional.<br>
+        If symptoms are severe or persistent, consult a doctor immediately.
+    </p>
+    """,
+    unsafe_allow_html=True
+)
