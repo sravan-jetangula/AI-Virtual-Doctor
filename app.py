@@ -69,7 +69,6 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
-st.session_state.setdefault("voice_input", "")  # store last voice input
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -229,7 +228,7 @@ else:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
         st.subheader("💬 Doctor Consultation")
 
-        # Display chat history
+        # Show chat history
         for m in st.session_state.chat:
             st.chat_message(m["role"]).write(m["content"])
 
@@ -241,12 +240,12 @@ else:
             if audio:
                 voice_text = voice_to_text(audio, st.session_state.language)
                 if voice_text:
-                    # append voice input only once per recording
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     st.session_state.chat.append({"role":"assistant","content":reply})
+                    st.experimental_rerun()  # only rerun after successful input
                 else:
-                    st.warning("Voice unclear, please try again")
+                    st.warning("⚠️ Voice unclear, please try again")
 
         # ===== File Upload =====
         with upload:
@@ -264,6 +263,7 @@ else:
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
+            st.experimental_rerun()
 
         # ===== Download PDF =====
         if st.session_state.final_rx:
