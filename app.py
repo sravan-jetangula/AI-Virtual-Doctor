@@ -18,7 +18,7 @@ st.set_page_config(page_title="AI Virtual Doctor", page_icon="🩺", layout="wid
 st.markdown("""
 <style>
 body { background-color: #f5f9ff; }
-.patient-card, .chat-card {
+.patient-card, .chat-card, .prescription-card {
     background: white;
     padding: 20px;
     border-radius: 15px;
@@ -36,6 +36,13 @@ body { background-color: #f5f9ff; }
     border: none;
 }
 .arrow-btn button:hover { background-color: #0d47a1; }
+.chat-container {
+    height: 400px;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column-reverse;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -217,11 +224,13 @@ else:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
         st.subheader("💬 Doctor Consultation")
 
-        # Show chat history immediately
-        for m in st.session_state.chat:
+        # Scrollable chat container with newest on top
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        for m in reversed(st.session_state.chat):  # reversed for flex-column-reverse
             content = m["content"].replace("\n"," ").strip()
             with st.chat_message(m["role"]):
                 st.write(content)
+        st.markdown('</div>', unsafe_allow_html=True)
 
         mic, upload = st.columns([1,3])
 
@@ -236,11 +245,6 @@ else:
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     reply = reply.replace("\n"," ").strip()
                     st.session_state.chat.append({"role":"assistant","content":reply})
-
-                    with st.chat_message("user"):
-                        st.write(voice_text)
-                    with st.chat_message("assistant"):
-                        st.write(reply)
                 else:
                     st.warning("⚠️ Voice unclear, please try again")
 
@@ -263,13 +267,14 @@ else:
             reply = doctor_ai(user_text, patient, st.session_state.language)
             reply = reply.replace("\n"," ").strip()
             st.session_state.chat.append({"role":"assistant","content":reply})
-            with st.chat_message("user"):
-                st.write(user_text)
-            with st.chat_message("assistant"):
-                st.write(reply)
 
-        # ===== Download PDF =====
+        # ===== Prescription Preview =====
         if st.session_state.final_rx:
+            st.markdown("<div class='prescription-card'>", unsafe_allow_html=True)
+            st.markdown(f"<h3>📝 Prescription Preview</h3>", unsafe_allow_html=True)
+            st.markdown(st.session_state.final_rx.replace("\n","<br>"), unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
             pdf = create_pdf(patient, st.session_state.final_rx)
             with open(pdf, "rb") as f:
                 st.download_button(
