@@ -24,7 +24,6 @@ body { background-color: #f5f9ff; }
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
     word-wrap: break-word;
-    white-space: pre-wrap;
 }
 .arrow-btn button {
     border-radius: 50%;
@@ -37,19 +36,29 @@ body { background-color: #f5f9ff; }
 }
 .arrow-btn button:hover { background-color: #0d47a1; }
 .chat-container {
-    height: 400px;
+    height: 500px;
     overflow-y: auto;
     padding: 10px;
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column;
 }
-.chat-input-container {
-    margin-top: 10px;
+.user-msg {
+    background-color: #DCF8C6;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    align-self: flex-end;
+    max-width: 70%;
+    word-wrap: break-word;
 }
-.mic-upload-container {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
+.assistant-msg {
+    background-color: #EAEAEA;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    align-self: flex-start;
+    max-width: 70%;
+    word-wrap: break-word;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -202,95 +211,79 @@ else:
     c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
     patient = c.fetchone()
 
-    # ===== Arrow Toggle =====
+    st.header("💬 Doctor Consultation")
+
+    # ===== Chat Container =====
+    chat_container = st.container()
+
+    # ===== Patient Info Toggle =====
     st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
     if st.button("<<" if st.session_state.show_patient else ">>"):
         st.session_state.show_patient = not st.session_state.show_patient
     st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.show_patient:
-        left, right = st.columns([1.5, 3.5])
-    else:
-        right = st.container()
+        st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
+        st.subheader("👤 Patient Information")
+        st.write(f"**Name:** {patient[1]}")
+        st.write(f"**Age:** {patient[2]}")
+        st.write(f"**Gender:** {patient[3]}")
+        st.write(f"**Phone:** {patient[4]}")
+        st.write(f"**Weight:** {patient[5]} kg")
+        st.write(f"**Allergy:** {patient[6]}")
+        st.write(f"**Language:** {patient[7]}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # ===== Patient Info =====
-    if st.session_state.show_patient:
-        with left:
-            st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
-            st.subheader("👤 Patient Information")
-            st.write(f"**Name:** {patient[1]}")
-            st.write(f"**Age:** {patient[2]}")
-            st.write(f"**Gender:** {patient[3]}")
-            st.write(f"**Phone:** {patient[4]}")
-            st.write(f"**Weight:** {patient[5]} kg")
-            st.write(f"**Allergy:** {patient[6]}")
-            st.write(f"**Language:** {patient[7]}")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    # ===== Chat =====
-    with right:
-        st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
-        st.subheader("💬 Doctor Consultation")
-
-        # Scrollable chat container with newest on top
-        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        for m in reversed(st.session_state.chat):  # reversed for flex-column-reverse
-            content = m["content"].replace("\n"," ").strip()
-            with st.chat_message(m["role"]):
-                st.write(content)
+    # ===== Display Chat =====
+    with chat_container:
+        st.markdown('<div class="chat-container" id="chat-box">', unsafe_allow_html=True)
+        for m in st.session_state.chat:
+            cls = "user-msg" if m["role"]=="user" else "assistant-msg"
+            st.markdown(f'<div class="{cls}">{m["content"].replace("\n","<br>")}</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # ===== Chat Input, Mic & Upload at bottom =====
-        with st.container():
-            # Chat input
-            user_text = st.chat_input("Type your message", key="chat_input")
-            if user_text:
-                user_text = user_text.replace("\n"," ").strip()
-                st.session_state.chat.append({"role":"user","content":user_text})
-                reply = doctor_ai(user_text, patient, st.session_state.language)
-                reply = reply.replace("\n"," ").strip()
-                st.session_state.chat.append({"role":"assistant","content":reply})
+    # ===== Typed Input =====
+    user_text = st.chat_input("Type your message", key="chat_input")
+    if user_text:
+        st.session_state.chat.append({"role":"user","content":user_text})
+        reply = doctor_ai(user_text, patient, st.session_state.language)
+        st.session_state.chat.append({"role":"assistant","content":reply})
+        st.experimental_rerun()
 
-            # Mic and file upload
-            mic, upload = st.columns([1,3])
-            with mic:
-                audio = st.audio_input("🎤 Click to record")
-                if audio:
-                    voice_text = voice_to_text(audio, st.session_state.language)
-                    if voice_text:
-                        voice_text = voice_text.replace("\n"," ").strip()
-                        st.session_state.chat.append({"role":"user","content":voice_text})
-                        reply = doctor_ai(voice_text, patient, st.session_state.language)
-                        reply = reply.replace("\n"," ").strip()
-                        st.session_state.chat.append({"role":"assistant","content":reply})
-                    else:
-                        st.warning("⚠️ Voice unclear, please try again")
+    # ===== Voice Input =====
+    audio = st.audio_input("🎤 Click to record")
+    if audio:
+        voice_text = voice_to_text(audio, st.session_state.language)
+        if voice_text:
+            st.session_state.chat.append({"role":"user","content":voice_text})
+            reply = doctor_ai(voice_text, patient, st.session_state.language)
+            st.session_state.chat.append({"role":"assistant","content":reply})
+            st.experimental_rerun()
+        else:
+            st.warning("⚠️ Voice unclear, please try again")
 
-            with upload:
-                files = st.file_uploader(
-                    "📎 Upload Reports / Images",
-                    accept_multiple_files=True,
-                    type=["png","jpg","jpeg","pdf"],
-                    key="file_upload"
-                )
-                if files:
-                    st.session_state.uploads.extend(files)
+    # ===== File Upload =====
+    files = st.file_uploader(
+        "📎 Upload Reports / Images",
+        accept_multiple_files=True,
+        type=["png","jpg","jpeg","pdf"],
+        key="file_upload"
+    )
+    if files:
+        st.session_state.uploads.extend(files)
 
-        # ===== Prescription Preview =====
-        if st.session_state.final_rx:
-            st.markdown("<div class='prescription-card'>", unsafe_allow_html=True)
-            st.markdown(f"<h3>📝 Prescription Preview</h3>", unsafe_allow_html=True)
-            st.markdown(st.session_state.final_rx.replace("\n","<br>"), unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            pdf = create_pdf(patient, st.session_state.final_rx)
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    "⬇ Download Prescription PDF",
-                    data=f,
-                    file_name="Prescription.pdf",
-                    mime="application/pdf"
-                )
-
+    # ===== Prescription =====
+    if st.session_state.final_rx:
+        st.markdown("<div class='prescription-card'>", unsafe_allow_html=True)
+        st.markdown(f"<h3>📝 Prescription Preview</h3>", unsafe_allow_html=True)
+        st.markdown(st.session_state.final_rx.replace("\n","<br>"), unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-s
+
+        pdf = create_pdf(patient, st.session_state.final_rx)
+        with open(pdf, "rb") as f:
+            st.download_button(
+                "⬇ Download Prescription PDF",
+                data=f,
+                file_name="Prescription.pdf",
+                mime="application/pdf"
+            )
