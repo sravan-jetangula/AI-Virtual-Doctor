@@ -43,6 +43,14 @@ body { background-color: #f5f9ff; }
     display: flex;
     flex-direction: column-reverse;
 }
+.chat-input-container {
+    margin-top: 10px;
+}
+.mic-upload-container {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -232,41 +240,41 @@ else:
                 st.write(content)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        mic, upload = st.columns([1,3])
+        # ===== Chat Input, Mic & Upload at bottom =====
+        with st.container():
+            # Chat input
+            user_text = st.chat_input("Type your message", key="chat_input")
+            if user_text:
+                user_text = user_text.replace("\n"," ").strip()
+                st.session_state.chat.append({"role":"user","content":user_text})
+                reply = doctor_ai(user_text, patient, st.session_state.language)
+                reply = reply.replace("\n"," ").strip()
+                st.session_state.chat.append({"role":"assistant","content":reply})
 
-        # ===== Voice Input =====
-        with mic:
-            audio = st.audio_input("🎤 Click to record")
-            if audio:
-                voice_text = voice_to_text(audio, st.session_state.language)
-                if voice_text:
-                    voice_text = voice_text.replace("\n"," ").strip()
-                    st.session_state.chat.append({"role":"user","content":voice_text})
-                    reply = doctor_ai(voice_text, patient, st.session_state.language)
-                    reply = reply.replace("\n"," ").strip()
-                    st.session_state.chat.append({"role":"assistant","content":reply})
-                else:
-                    st.warning("⚠️ Voice unclear, please try again")
+            # Mic and file upload
+            mic, upload = st.columns([1,3])
+            with mic:
+                audio = st.audio_input("🎤 Click to record")
+                if audio:
+                    voice_text = voice_to_text(audio, st.session_state.language)
+                    if voice_text:
+                        voice_text = voice_text.replace("\n"," ").strip()
+                        st.session_state.chat.append({"role":"user","content":voice_text})
+                        reply = doctor_ai(voice_text, patient, st.session_state.language)
+                        reply = reply.replace("\n"," ").strip()
+                        st.session_state.chat.append({"role":"assistant","content":reply})
+                    else:
+                        st.warning("⚠️ Voice unclear, please try again")
 
-        # ===== File Upload =====
-        with upload:
-            files = st.file_uploader(
-                "📎 Upload Reports / Images",
-                accept_multiple_files=True,
-                type=["png","jpg","jpeg","pdf"],
-                key="file_upload"
-            )
-            if files:
-                st.session_state.uploads.extend(files)
-
-        # ===== Typed Input =====
-        user_text = st.chat_input("Type your message", key="chat_input")
-        if user_text:
-            user_text = user_text.replace("\n"," ").strip()
-            st.session_state.chat.append({"role":"user","content":user_text})
-            reply = doctor_ai(user_text, patient, st.session_state.language)
-            reply = reply.replace("\n"," ").strip()
-            st.session_state.chat.append({"role":"assistant","content":reply})
+            with upload:
+                files = st.file_uploader(
+                    "📎 Upload Reports / Images",
+                    accept_multiple_files=True,
+                    type=["png","jpg","jpeg","pdf"],
+                    key="file_upload"
+                )
+                if files:
+                    st.session_state.uploads.extend(files)
 
         # ===== Prescription Preview =====
         if st.session_state.final_rx:
