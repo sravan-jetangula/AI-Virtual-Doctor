@@ -12,11 +12,7 @@ from reportlab.lib.units import cm
 from datetime import datetime
 
 # ================= PAGE CONFIG =================
-st.set_page_config(
-    page_title="AI Virtual Doctor",
-    page_icon="🩺",
-    layout="wide"
-)
+st.set_page_config(page_title="AI Virtual Doctor", page_icon="🩺", layout="wide")
 
 # ================= CSS =================
 st.markdown("""
@@ -46,7 +42,6 @@ API_KEY = os.getenv("GROQ_API_KEY")
 if not API_KEY:
     st.error("❌ GROQ_API_KEY not set")
     st.stop()
-
 client = Groq(api_key=API_KEY)
 
 # ================= DATABASE =================
@@ -125,7 +120,7 @@ Date: {datetime.now().strftime('%d-%b-%Y')}
     return file
 
 # ================= AI =================
-def doctor_ai(text, patient, lang):
+def doctor_ai(user_text, patient, lang):
     prompt = f"""
 You are a professional medical doctor.
 Ask ONLY ONE question at a time.
@@ -137,7 +132,7 @@ Language: {lang}
 Patient: {patient[1]}, {patient[2]} years, {patient[3]}
 """
     messages = [{"role":"system","content":prompt}] + st.session_state.chat
-    messages.append({"role":"user","content":text})
+    messages.append({"role":"user","content":user_text})
 
     res = client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -149,7 +144,6 @@ Patient: {patient[1]}, {patient[2]} years, {patient[3]}
     reply = res.choices[0].message.content.strip()
     if "FINAL PRESCRIPTION" in reply.upper():
         st.session_state.final_rx = reply
-
     return reply
 
 # ================= WELCOME =================
@@ -221,9 +215,10 @@ else:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
         st.subheader("💬 Doctor Consultation")
 
-        # Show chat history
+        # Show chat history immediately
         for m in st.session_state.chat:
-            st.chat_message(m["role"]).write(m["content"])
+            with st.chat_message(m["role"]):
+                st.write(m["content"])
 
         mic, upload = st.columns([1,3])
 
@@ -233,9 +228,15 @@ else:
             if audio:
                 voice_text = voice_to_text(audio, st.session_state.language)
                 if voice_text:
+                    # Append user and assistant in same interaction to prevent lag
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     st.session_state.chat.append({"role":"assistant","content":reply})
+                    # Display immediately
+                    with st.chat_message("user"):
+                        st.write(voice_text)
+                    with st.chat_message("assistant"):
+                        st.write(reply)
                 else:
                     st.warning("⚠️ Voice unclear, please try again")
 
@@ -256,6 +257,11 @@ else:
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
+            # Display immediately
+            with st.chat_message("user"):
+                st.write(user_text)
+            with st.chat_message("assistant"):
+                st.write(reply)
 
         # ===== Download PDF =====
         if st.session_state.final_rx:
