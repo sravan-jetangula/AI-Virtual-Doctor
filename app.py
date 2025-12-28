@@ -1,111 +1,112 @@
 import streamlit as st
-from ai_agent import get_ai_response
+from ai_agent import get_ai_response, generate_prescription
+from pdf_utils import create_prescription_pdf
 
-# -------------------------------------------------
-# PAGE CONFIG (must be first Streamlit command)
-# -------------------------------------------------
 st.set_page_config(
     page_title="AI Virtual Doctor",
     page_icon="🩺",
-    layout="centered"
+    layout="wide"
 )
 
-# -------------------------------------------------
-# HEADER
-# -------------------------------------------------
-st.markdown(
-    """
-    <h1 style="text-align:center;">🩺 AI Virtual Doctor</h1>
-    <p style="text-align:center;">
-    Describe your health issue and get AI-powered medical guidance
-    </p>
-    <hr>
-    """,
-    unsafe_allow_html=True
-)
+# ---------------- SESSION STATE ----------------
+if "page" not in st.session_state:
+    st.session_state.page = "welcome"
 
-# -------------------------------------------------
-# SESSION STATE (same flow as PowerShell)
-# -------------------------------------------------
-if "step" not in st.session_state:
-    st.session_state.step = 1
+if "patient" not in st.session_state:
+    st.session_state.patient = {}
 
-if "history" not in st.session_state:
-    st.session_state.history = []
+if "chat" not in st.session_state:
+    st.session_state.chat = []
 
-# -------------------------------------------------
-# STEP 1 – SYMPTOMS INPUT
-# -------------------------------------------------
-if st.session_state.step == 1:
-    st.subheader("🧍 Patient")
-    symptom = st.text_input(
-        "Describe your main symptom",
-        placeholder="Example: I have fever since last night"
-    )
+# ---------------- WELCOME PAGE ----------------
+def welcome_page():
+    st.markdown("""
+    <div style="text-align:center; padding:40px">
+        <h1 style="color:#0b5ed7;">🩺 AI Virtual Doctor</h1>
+        <h3>Your Smart Healthcare Assistant</h3>
+        <p>Consult an AI-powered doctor for preliminary medical guidance</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.button("Continue"):
-        if symptom.strip():
-            st.session_state.history.append(("Patient", symptom))
-            st.session_state.step = 2
-        else:
-            st.warning("Please enter your symptom.")
+    if st.button("🚀 Start Registration", use_container_width=True):
+        st.session_state.page = "register"
+        st.rerun()
 
-# -------------------------------------------------
-# STEP 2 – FOLLOW-UP QUESTIONS
-# -------------------------------------------------
-elif st.session_state.step == 2:
-    st.subheader("🩺 AI Doctor")
+# ---------------- PATIENT REGISTRATION ----------------
+def registration_page():
+    st.header("🧾 Patient Registration")
 
-    st.write("Thank you. I need a few more details:")
+    with st.form("patient_form"):
+        name = st.text_input("Full Name")
+        age = st.number_input("Age", min_value=1, max_value=120)
+        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+        phone = st.text_input("Phone Number")
+        weight = st.number_input("Weight (kg)", min_value=1)
+        allergy = st.text_input("Any Allergies?")
+        submitted = st.form_submit_button("Proceed to Consultation")
 
-    duration = st.text_input("⏱ Since when do you have this issue?")
-    severity = st.selectbox("📊 Severity", ["Mild", "Moderate", "Severe"])
-    reports = st.radio("📄 Any previous medical reports?", ["No", "Yes"])
+    if submitted:
+        st.session_state.patient = {
+            "name": name,
+            "age": age,
+            "gender": gender,
+            "phone": phone,
+            "weight": weight,
+            "allergy": allergy
+        }
+        st.session_state.page = "consult"
+        st.rerun()
 
-    if st.button("Analyze"):
-        if duration.strip():
-            combined_input = f"""
-            Symptom: {st.session_state.history[0][1]}
-            Duration: {duration}
-            Severity: {severity}
-            Reports: {reports}
-            """
+# ---------------- CONSULTATION PAGE ----------------
+def consultation_page():
+    st.subheader("💬 Doctor Consultation")
 
-            response = get_ai_response(combined_input)
+    # Sidebar Patient Info
+    with st.sidebar:
+        st.header("👤 Patient Info")
+        for k, v in st.session_state.patient.items():
+            st.write(f"**{k.capitalize()}**: {v}")
 
-            st.session_state.history.append(("AI Doctor", response))
-            st.session_state.step = 3
-        else:
-            st.warning("Please answer all questions.")
+    user_input = st.text_input("Describe your symptoms")
 
-# -------------------------------------------------
-# STEP 3 – RESULT (same as PowerShell output)
-# -------------------------------------------------
-elif st.session_state.step == 3:
-    st.subheader("🧾 Medical Assessment")
+    if st.button("🧠 Consult AI Doctor"):
+        if user_input:
+            response = get_ai_response(user_input, st.session_state.chat)
+            st.session_state.chat.append(("Patient", user_input))
+            st.session_state.chat.append(("Doctor", response))
+            st.rerun()
 
-    for role, text in st.session_state.history:
+    # Chat History
+    for role, msg in st.session_state.chat:
         if role == "Patient":
-            st.markdown(f"**🧍 Patient:** {text}")
+            st.markdown(f"**🧑 Patient:** {msg}")
         else:
-            st.markdown(f"**🩺 AI Doctor:** {text}")
+            st.markdown(f"**🩺 Doctor:** {msg}")
 
-    st.success("✔ Consultation completed")
+    if st.button("📄 Generate Prescription"):
+        prescription = generate_prescription(
+            st.session_state.patient,
+            st.session_state.chat
+        )
+        pdf = create_prescription_pdf(
+            st.session_state.patient,
+            prescription
+        )
+        st.download_button(
+            "⬇️ Download Prescription PDF",
+            pdf,
+            file_name="prescription.pdf",
+            mime="application/pdf"
+        )
 
-    if st.button("🔄 New Consultation"):
-        st.session_state.step = 1
-        st.session_state.history = []
+# ---------------- ROUTER ----------------
+if st.session_state.page == "welcome":
+    welcome_page()
+elif st.session_state.page == "register":
+    registration_page()
+elif st.session_state.page == "consult":
+    consultation_page()
 
-# -------------------------------------------------
-# FOOTER
-# -------------------------------------------------
-st.markdown(
-    """
-    <hr>
-    <small>
-    ⚠️ This AI provides informational guidance only.  
-    Always consult a certified doctor for medical decisions.
-    </small>
-    """,
-    unsafe_allow_html=True
-)
+# ---------------- DISCLAIMER ----------------
+st.markdown("---")
+st.warning("⚠️ This AI provides general medical guidance only. Consult a certified doctor for treatment.")
