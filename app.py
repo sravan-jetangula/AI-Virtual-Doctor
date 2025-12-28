@@ -23,6 +23,8 @@ body { background-color: #f5f9ff; }
     padding: 20px;
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+    word-wrap: break-word;
+    white-space: pre-wrap;
 }
 .arrow-btn button {
     border-radius: 50%;
@@ -217,8 +219,9 @@ else:
 
         # Show chat history immediately
         for m in st.session_state.chat:
+            content = m["content"].replace("\n"," ").strip()
             with st.chat_message(m["role"]):
-                st.write(m["content"])
+                st.write(content)
 
         mic, upload = st.columns([1,3])
 
@@ -228,11 +231,12 @@ else:
             if audio:
                 voice_text = voice_to_text(audio, st.session_state.language)
                 if voice_text:
-                    # Append user and assistant in same interaction to prevent lag
+                    voice_text = voice_text.replace("\n"," ").strip()
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
+                    reply = reply.replace("\n"," ").strip()
                     st.session_state.chat.append({"role":"assistant","content":reply})
-                    # Display immediately
+
                     with st.chat_message("user"):
                         st.write(voice_text)
                     with st.chat_message("assistant"):
@@ -254,10 +258,11 @@ else:
         # ===== Typed Input =====
         user_text = st.chat_input("Type your message", key="chat_input")
         if user_text:
+            user_text = user_text.replace("\n"," ").strip()
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
+            reply = reply.replace("\n"," ").strip()
             st.session_state.chat.append({"role":"assistant","content":reply})
-            # Display immediately
             with st.chat_message("user"):
                 st.write(user_text)
             with st.chat_message("assistant"):
