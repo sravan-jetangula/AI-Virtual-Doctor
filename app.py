@@ -69,6 +69,7 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
+st.session_state.setdefault("voice_input", "")  # store last voice input
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -235,19 +236,17 @@ else:
         mic, upload = st.columns([1,3])
 
         # ===== Voice Input =====
-        voice_text = None
         with mic:
             audio = st.audio_input("🎤 Click to record")
             if audio:
                 voice_text = voice_to_text(audio, st.session_state.language)
-                if not voice_text:
-                    st.warning("Voice unclear, please try again")
-                else:
-                    # Append voice input to chat
+                if voice_text:
+                    # append voice input only once per recording
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     st.session_state.chat.append({"role":"assistant","content":reply})
-                    st.experimental_rerun()  # rerun to show new messages
+                else:
+                    st.warning("Voice unclear, please try again")
 
         # ===== File Upload =====
         with upload:
@@ -265,7 +264,6 @@ else:
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
-            st.experimental_rerun()
 
         # ===== Download PDF =====
         if st.session_state.final_rx:
