@@ -69,8 +69,7 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
-st.session_state.setdefault("voice_text", None)  # store converted voice
-st.session_state.setdefault("last_user_msg", None)  # prevent duplicate AI calls
+st.session_state.setdefault("last_user_msg", None)  # to prevent duplicate AI calls
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -234,9 +233,10 @@ else:
         # ===== Voice input =====
         with mic:
             audio = st.audio_input("🎤")
-            if audio and st.session_state.voice_text is None:
+            voice_text = None
+            if audio:
                 try:
-                    st.session_state.voice_text = voice_to_text(audio, st.session_state.language)
+                    voice_text = voice_to_text(audio, st.session_state.language)
                 except:
                     st.warning("Voice unclear, please type")
 
@@ -250,16 +250,15 @@ else:
             if files:
                 st.session_state.uploads.extend(files)
 
-        # ===== Get user input (voice or typed) =====
-        user_text = st.chat_input("Describe your problem") or st.session_state.voice_text
+        # ===== Get user input (typed or voice) =====
+        user_text = st.chat_input("Describe your problem") or voice_text
 
-        # ===== Prevent duplicate messages =====
+        # ===== Prevent sending duplicates =====
         if user_text and user_text != st.session_state.last_user_msg:
             st.session_state.last_user_msg = user_text
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
-            st.session_state.voice_text = None  # clear after first use
             st.rerun()
 
         # ===== Download PDF =====
