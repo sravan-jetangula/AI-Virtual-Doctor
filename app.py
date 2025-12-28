@@ -1,112 +1,192 @@
+import os, uuid, sqlite3, tempfile
 import streamlit as st
-from ai_agent import get_ai_response, generate_prescription
-from pdf_utils import create_prescription_pdf
+from groq import Groq
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from datetime import datetime
 
-st.set_page_config(
-    page_title="AI Virtual Doctor",
-    page_icon="🩺",
-    layout="wide"
+# ================= PAGE CONFIG =================
+st.set_page_config(page_title="AI Virtual Doctor", page_icon="🩺", layout="wide")
+
+# ================= CSS =================
+st.markdown("""
+<style>
+body { background-color: #f5f9ff; }
+.patient-card, .chat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+}
+.arrow-btn button {
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+    background-color: #1565c0;
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ================= GROQ (SAFE) =================
+API_KEY = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=API_KEY) if API_KEY else None
+
+# ================= DATABASE (SAFE) =================
+conn = sqlite3.connect("patients.db", check_same_thread=False)
+c = conn.cursor()
+c.execute("""
+CREATE TABLE IF NOT EXISTS patients(
+id TEXT PRIMARY KEY,
+name TEXT, age INT, gender TEXT,
+phone TEXT, weight TEXT, allergy TEXT, language TEXT
 )
+""")
+conn.commit()
 
-# ---------------- SESSION STATE ----------------
-if "page" not in st.session_state:
-    st.session_state.page = "welcome"
+# ================= SESSION =================
+st.session_state.setdefault("page", "welcome")
+st.session_state.setdefault("chat", [])
+st.session_state.setdefault("final_rx", None)
+st.session_state.setdefault("show_patient", True)
 
-if "patient" not in st.session_state:
-    st.session_state.patient = {}
+# ================= PDF =================
+def create_pdf(patient, rx):
+    file = "Prescription.pdf"
+    doc = SimpleDocTemplate(file, pagesize=A4,
+        rightMargin=2*cm,leftMargin=2*cm,topMargin=2*cm,bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    story = []
 
-if "chat" not in st.session_state:
-    st.session_state.chat = []
+    story.append(Paragraph("<b>AI VIRTUAL DOCTOR – PRESCRIPTION</b>", styles["Title"]))
+    story.append(Spacer(1,12))
 
-# ---------------- WELCOME PAGE ----------------
-def welcome_page():
+    story.append(Paragraph(f"""
+<b>Patient Details</b><br/>
+Name: {patient[1]}<br/>
+Age/Gender: {patient[2]} / {patient[3]}<br/>
+Phone: {patient[4]}<br/>
+Weight: {patient[5]} kg<br/>
+Allergy: {patient[6]}<br/>
+Date: {datetime.now().strftime('%d-%b-%Y')}
+""", styles["Normal"]))
+
+    story.append(Spacer(1,12))
+
+    for part in rx.split("\n\n"):
+        story.append(Paragraph(part.replace("\n","<br/>"), styles["Normal"]))
+        story.append(Spacer(1,10))
+
+    story.append(Spacer(1,20))
+    story.append(Paragraph("<b>Doctor Signature</b><br/>AI Virtual Doctor", styles["Normal"]))
+    doc.build(story)
+    return file
+
+# ================= AI =================
+def doctor_ai(text, patient, lang):
+    if not client:
+        return "⚠️ AI service not configured. Please add GROQ_API_KEY."
+
+    prompt = f"""
+You are a professional medical doctor.
+Ask ONE relevant question at a time.
+When enough info is collected, provide FINAL PRESCRIPTION.
+
+Language: {lang}
+Patient: {patient[1]}, {patient[2]} years, {patient[3]}
+"""
+    messages = [{"role":"system","content":prompt}] + st.session_state.chat
+    messages.append({"role":"user","content":text})
+
+    res = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=messages,
+        temperature=0.2,
+        max_tokens=600
+    )
+
+    reply = res.choices[0].message.content.strip()
+    if "FINAL PRESCRIPTION" in reply.upper():
+        st.session_state.final_rx = reply
+
+    return reply
+
+# ================= WELCOME =================
+if st.session_state.page == "welcome":
     st.markdown("""
-    <div style="text-align:center; padding:40px">
-        <h1 style="color:#0b5ed7;">🩺 AI Virtual Doctor</h1>
-        <h3>Your Smart Healthcare Assistant</h3>
-        <p>Consult an AI-powered doctor for preliminary medical guidance</p>
+    <div style="background:linear-gradient(135deg,#1565c0,#42a5f5);
+    padding:60px;border-radius:25px;color:white;text-align:center;">
+    <h1>🩺 AI Virtual Doctor</h1>
+    <p>Smart • Professional • Reliable</p>
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("🚀 Start Registration", use_container_width=True):
+    if st.button("🚀 Start Consultation", use_container_width=True):
         st.session_state.page = "register"
         st.rerun()
 
-# ---------------- PATIENT REGISTRATION ----------------
-def registration_page():
-    st.header("🧾 Patient Registration")
+# ================= REGISTER =================
+elif st.session_state.page == "register":
+    st.header("📝 Patient Registration")
 
-    with st.form("patient_form"):
-        name = st.text_input("Full Name")
-        age = st.number_input("Age", min_value=1, max_value=120)
-        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
-        phone = st.text_input("Phone Number")
-        weight = st.number_input("Weight (kg)", min_value=1)
-        allergy = st.text_input("Any Allergies?")
-        submitted = st.form_submit_button("Proceed to Consultation")
+    name = st.text_input("Name")
+    age = st.number_input("Age",1,120)
+    gender = st.selectbox("Gender",["Male","Female"])
+    phone = st.text_input("Phone")
+    weight = st.text_input("Weight")
+    allergy = st.text_input("Allergy")
+    lang = st.selectbox("Language",["English","Hindi","Telugu"])
 
-    if submitted:
-        st.session_state.patient = {
-            "name": name,
-            "age": age,
-            "gender": gender,
-            "phone": phone,
-            "weight": weight,
-            "allergy": allergy
-        }
+    if st.button("Proceed"):
+        pid = str(uuid.uuid4())[:8]
+        c.execute("INSERT INTO patients VALUES (?,?,?,?,?,?,?,?)",
+            (pid,name,age,gender,phone,weight,allergy,lang))
+        conn.commit()
+        st.session_state.pid = pid
+        st.session_state.language = lang
         st.session_state.page = "consult"
         st.rerun()
 
-# ---------------- CONSULTATION PAGE ----------------
-def consultation_page():
-    st.subheader("💬 Doctor Consultation")
+# ================= CONSULT =================
+else:
+    c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
+    patient = c.fetchone()
 
-    # Sidebar Patient Info
-    with st.sidebar:
-        st.header("👤 Patient Info")
-        for k, v in st.session_state.patient.items():
-            st.write(f"**{k.capitalize()}**: {v}")
+    if st.session_state.show_patient:
+        left, right = st.columns([1.4,3.6])
+    else:
+        right = st.container()
 
-    user_input = st.text_input("Describe your symptoms")
+    if st.session_state.show_patient:
+        with left:
+            st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
+            for label,val in zip(
+                ["Name","Age","Gender","Phone","Weight","Allergy","Language"],
+                patient[1:]):
+                st.write(f"**{label}:** {val}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("🧠 Consult AI Doctor"):
-        if user_input:
-            response = get_ai_response(user_input, st.session_state.chat)
-            st.session_state.chat.append(("Patient", user_input))
-            st.session_state.chat.append(("Doctor", response))
+    with right:
+        st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
+        st.subheader("💬 Doctor Consultation")
+
+        for m in st.session_state.chat:
+            st.chat_message(m["role"]).write(m["content"])
+
+        user_text = st.chat_input("Describe your problem")
+
+        if user_text:
+            st.session_state.chat.append({"role":"user","content":user_text})
+            reply = doctor_ai(user_text, patient, st.session_state.language)
+            st.session_state.chat.append({"role":"assistant","content":reply})
             st.rerun()
 
-    # Chat History
-    for role, msg in st.session_state.chat:
-        if role == "Patient":
-            st.markdown(f"**🧑 Patient:** {msg}")
-        else:
-            st.markdown(f"**🩺 Doctor:** {msg}")
+        if st.session_state.final_rx:
+            pdf = create_pdf(patient, st.session_state.final_rx)
+            with open(pdf,"rb") as f:
+                st.download_button("⬇ Download Prescription PDF", f, "Prescription.pdf")
 
-    if st.button("📄 Generate Prescription"):
-        prescription = generate_prescription(
-            st.session_state.patient,
-            st.session_state.chat
-        )
-        pdf = create_prescription_pdf(
-            st.session_state.patient,
-            prescription
-        )
-        st.download_button(
-            "⬇️ Download Prescription PDF",
-            pdf,
-            file_name="prescription.pdf",
-            mime="application/pdf"
-        )
-
-# ---------------- ROUTER ----------------
-if st.session_state.page == "welcome":
-    welcome_page()
-elif st.session_state.page == "register":
-    registration_page()
-elif st.session_state.page == "consult":
-    consultation_page()
-
-# ---------------- DISCLAIMER ----------------
-st.markdown("---")
-st.warning("⚠️ This AI provides general medical guidance only. Consult a certified doctor for treatment.")
+        st.markdown("</div>", unsafe_allow_html=True)
