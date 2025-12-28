@@ -40,7 +40,7 @@ body { background-color: #f5f9ff; }
     overflow-y: auto;
     padding: 10px;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;  /* latest messages appear on top */
 }
 .user-msg {
     background-color: #DCF8C6;
@@ -213,77 +213,81 @@ else:
 
     st.header("💬 Doctor Consultation")
 
-    # ===== Chat Container =====
-    chat_container = st.container()
+    left, right = st.columns([1.5, 3.5])
 
     # ===== Patient Info Toggle =====
-    st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
-    if st.button("<<" if st.session_state.show_patient else ">>"):
-        st.session_state.show_patient = not st.session_state.show_patient
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    if st.session_state.show_patient:
-        st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
-        st.subheader("👤 Patient Information")
-        st.write(f"**Name:** {patient[1]}")
-        st.write(f"**Age:** {patient[2]}")
-        st.write(f"**Gender:** {patient[3]}")
-        st.write(f"**Phone:** {patient[4]}")
-        st.write(f"**Weight:** {patient[5]} kg")
-        st.write(f"**Allergy:** {patient[6]}")
-        st.write(f"**Language:** {patient[7]}")
+    with left:
+        st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
+        if st.button("<<" if st.session_state.show_patient else ">>"):
+            st.session_state.show_patient = not st.session_state.show_patient
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ===== Display Chat =====
-    with chat_container:
-        st.markdown('<div class="chat-container" id="chat-box">', unsafe_allow_html=True)
-        for m in st.session_state.chat:
+        if st.session_state.show_patient:
+            st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
+            st.subheader("👤 Patient Information")
+            st.write(f"**Name:** {patient[1]}")
+            st.write(f"**Age:** {patient[2]}")
+            st.write(f"**Gender:** {patient[3]}")
+            st.write(f"**Phone:** {patient[4]}")
+            st.write(f"**Weight:** {patient[5]} kg")
+            st.write(f"**Allergy:** {patient[6]}")
+            st.write(f"**Language:** {patient[7]}")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # ===== Chat =====
+    with right:
+        st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
+        st.subheader("💬 Consultation")
+
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        for m in reversed(st.session_state.chat):  # newest on top
             cls = "user-msg" if m["role"]=="user" else "assistant-msg"
             st.markdown(f'<div class="{cls}">{m["content"].replace("\n","<br>")}</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ===== Typed Input =====
-    user_text = st.chat_input("Type your message", key="chat_input")
-    if user_text:
-        st.session_state.chat.append({"role":"user","content":user_text})
-        reply = doctor_ai(user_text, patient, st.session_state.language)
-        st.session_state.chat.append({"role":"assistant","content":reply})
-        st.experimental_rerun()
-
-    # ===== Voice Input =====
-    audio = st.audio_input("🎤 Click to record")
-    if audio:
-        voice_text = voice_to_text(audio, st.session_state.language)
-        if voice_text:
-            st.session_state.chat.append({"role":"user","content":voice_text})
-            reply = doctor_ai(voice_text, patient, st.session_state.language)
+        # ===== Typed Input =====
+        user_text = st.chat_input("Type your message", key="chat_input")
+        if user_text:
+            st.session_state.chat.append({"role":"user","content":user_text})
+            reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
             st.experimental_rerun()
-        else:
-            st.warning("⚠️ Voice unclear, please try again")
 
-    # ===== File Upload =====
-    files = st.file_uploader(
-        "📎 Upload Reports / Images",
-        accept_multiple_files=True,
-        type=["png","jpg","jpeg","pdf"],
-        key="file_upload"
-    )
-    if files:
-        st.session_state.uploads.extend(files)
+        # ===== Voice Input =====
+        audio = st.audio_input("🎤 Click to record")
+        if audio:
+            voice_text = voice_to_text(audio, st.session_state.language)
+            if voice_text:
+                st.session_state.chat.append({"role":"user","content":voice_text})
+                reply = doctor_ai(voice_text, patient, st.session_state.language)
+                st.session_state.chat.append({"role":"assistant","content":reply})
+                st.experimental_rerun()
+            else:
+                st.warning("⚠️ Voice unclear, please try again")
 
-    # ===== Prescription =====
-    if st.session_state.final_rx:
-        st.markdown("<div class='prescription-card'>", unsafe_allow_html=True)
-        st.markdown(f"<h3>📝 Prescription Preview</h3>", unsafe_allow_html=True)
-        st.markdown(st.session_state.final_rx.replace("\n","<br>"), unsafe_allow_html=True)
+        # ===== File Upload =====
+        files = st.file_uploader(
+            "📎 Upload Reports / Images",
+            accept_multiple_files=True,
+            type=["png","jpg","jpeg","pdf"],
+            key="file_upload"
+        )
+        if files:
+            st.session_state.uploads.extend(files)
+
+        # ===== Prescription =====
+        if st.session_state.final_rx:
+            st.markdown("<div class='prescription-card'>", unsafe_allow_html=True)
+            st.markdown(f"<h3>📝 Prescription Preview</h3>", unsafe_allow_html=True)
+            st.markdown(st.session_state.final_rx.replace("\n","<br>"), unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            pdf = create_pdf(patient, st.session_state.final_rx)
+            with open(pdf, "rb") as f:
+                st.download_button(
+                    "⬇ Download Prescription PDF",
+                    data=f,
+                    file_name="Prescription.pdf",
+                    mime="application/pdf"
+                )
         st.markdown("</div>", unsafe_allow_html=True)
-
-        pdf = create_pdf(patient, st.session_state.final_rx)
-        with open(pdf, "rb") as f:
-            st.download_button(
-                "⬇ Download Prescription PDF",
-                data=f,
-                file_name="Prescription.pdf",
-                mime="application/pdf"
-            )
