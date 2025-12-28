@@ -69,7 +69,6 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
-st.session_state.setdefault("last_user_msg", None)  # to prevent duplicate AI calls
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -79,10 +78,15 @@ def voice_to_text(audio, lang):
         path = f.name
     with sr.AudioFile(path) as src:
         data = r.record(src)
-    return r.recognize_google(
-        data,
-        language={"English":"en-IN","Hindi":"hi-IN","Telugu":"te-IN"}.get(lang,"en-IN")
-    )
+    try:
+        return r.recognize_google(
+            data,
+            language={"English":"en-IN","Hindi":"hi-IN","Telugu":"te-IN"}.get(lang,"en-IN")
+        )
+    except sr.UnknownValueError:
+        return None
+    except sr.RequestError:
+        return None
 
 # ================= PDF =================
 def create_pdf(patient, rx):
@@ -230,15 +234,20 @@ else:
 
         mic, upload = st.columns([1,3])
 
-        # ===== Voice input =====
+        # ===== Voice Input =====
+        voice_text = None
         with mic:
-            audio = st.audio_input("🎤")
-            voice_text = None
+            audio = st.audio_input("🎤 Click to record")
             if audio:
-                try:
-                    voice_text = voice_to_text(audio, st.session_state.language)
-                except:
-                    st.warning("Voice unclear, please type")
+                voice_text = voice_to_text(audio, st.session_state.language)
+                if not voice_text:
+                    st.warning("Voice unclear, please try again")
+                else:
+                    # Append voice input to chat
+                    st.session_state.chat.append({"role":"user","content":voice_text})
+                    reply = doctor_ai(voice_text, patient, st.session_state.language)
+                    st.session_state.chat.append({"role":"assistant","content":reply})
+                    st.experimental_rerun()  # rerun to show new messages
 
         # ===== File Upload =====
         with upload:
@@ -250,16 +259,13 @@ else:
             if files:
                 st.session_state.uploads.extend(files)
 
-        # ===== Get user input (typed or voice) =====
-        user_text = st.chat_input("Describe your problem") or voice_text
-
-        # ===== Prevent sending duplicates =====
-        if user_text and user_text != st.session_state.last_user_msg:
-            st.session_state.last_user_msg = user_text
+        # ===== Typed Input =====
+        user_text = st.chat_input("Type your message")
+        if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
-            st.rerun()
+            st.experimental_rerun()
 
         # ===== Download PDF =====
         if st.session_state.final_rx:
