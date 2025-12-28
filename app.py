@@ -28,7 +28,7 @@ body { background-color: #f5f9ff; }
 }
 
 .toggle-btn button {
-    border-radius: 10px;
+    width: 100%;
     font-weight: 600;
 }
 </style>
@@ -180,16 +180,15 @@ else:
     c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
     patient = c.fetchone()
 
-    # 🔁 TOGGLE BUTTON
-    st.markdown("<div class='toggle-btn'>", unsafe_allow_html=True)
-    if st.button("<<" if st.session_state. else ">>Show Patient Info"):
-        st.session_state.show_patient = not st.session_state.show_patient
-        st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+    # 🔘 SIMPLE TOGGLE BUTTON (NO ARROWS, NO TEXT)
+    with st.container():
+        if st.button("Hide Patient Info" if st.session_state.show_patient else "Show Patient Info"):
+            st.session_state.show_patient = not st.session_state.show_patient
+            st.rerun()
 
     # Layout
     if st.session_state.show_patient:
-        left, right = st.columns([1.5,3.5])
+        left, right = st.columns([1.5, 3.5])
     else:
         right = st.container()
 
