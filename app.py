@@ -168,7 +168,7 @@ if st.session_state.page == "welcome":
 
     if st.button("🚀 Start Consultation", use_container_width=True):
         st.session_state.page = "register"
-        st.experimental_rerun()
+        rerun()
 
 # ================= REGISTER =================
 elif st.session_state.page == "register":
