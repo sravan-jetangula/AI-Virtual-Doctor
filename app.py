@@ -1,4 +1,7 @@
-import os, uuid, sqlite3, tempfile
+import os
+import uuid
+import sqlite3
+import tempfile
 import streamlit as st
 import speech_recognition as sr
 from groq import Groq
@@ -19,14 +22,12 @@ st.set_page_config(
 st.markdown("""
 <style>
 body { background-color: #f5f9ff; }
-
 .patient-card, .chat-card {
     background: white;
     padding: 20px;
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
 }
-
 .arrow-btn button {
     border-radius: 50%;
     width: 44px;
@@ -36,7 +37,6 @@ body { background-color: #f5f9ff; }
     color: white;
     border: none;
 }
-
 .arrow-btn button:hover {
     background-color: #0d47a1;
 }
@@ -69,6 +69,8 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
+st.session_state.setdefault("pid", None)
+st.session_state.setdefault("language", "English")
 
 # ================= VOICE =================
 def voice_to_text(audio, lang):
@@ -83,9 +85,7 @@ def voice_to_text(audio, lang):
             data,
             language={"English":"en-IN","Hindi":"hi-IN","Telugu":"te-IN"}.get(lang,"en-IN")
         )
-    except sr.UnknownValueError:
-        return None
-    except sr.RequestError:
+    except:
         return None
 
 # ================= PDF =================
@@ -168,7 +168,7 @@ if st.session_state.page == "welcome":
 
     if st.button("🚀 Start Consultation", use_container_width=True):
         st.session_state.page = "register"
-        st.rerun()
+        st.experimental_rerun()
 
 # ================= REGISTER =================
 elif st.session_state.page == "register":
@@ -190,7 +190,7 @@ elif st.session_state.page == "register":
         st.session_state.pid = pid
         st.session_state.language = lang
         st.session_state.page = "consult"
-        st.rerun()
+        st.experimental_rerun()
 
 # ================= CONSULT =================
 else:
@@ -201,7 +201,7 @@ else:
     st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
     if st.button("<<" if st.session_state.show_patient else ">>"):
         st.session_state.show_patient = not st.session_state.show_patient
-        st.rerun()
+        st.experimental_rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.show_patient:
@@ -243,7 +243,6 @@ else:
                     st.session_state.chat.append({"role":"user","content":voice_text})
                     reply = doctor_ai(voice_text, patient, st.session_state.language)
                     st.session_state.chat.append({"role":"assistant","content":reply})
-                    st.experimental_rerun()  # only rerun after successful input
                 else:
                     st.warning("⚠️ Voice unclear, please try again")
 
@@ -252,18 +251,18 @@ else:
             files = st.file_uploader(
                 "📎 Upload Reports / Images",
                 accept_multiple_files=True,
-                type=["png","jpg","jpeg","pdf"]
+                type=["png","jpg","jpeg","pdf"],
+                key="file_upload"
             )
             if files:
                 st.session_state.uploads.extend(files)
 
         # ===== Typed Input =====
-        user_text = st.chat_input("Type your message")
+        user_text = st.chat_input("Type your message", key="chat_input")
         if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
             reply = doctor_ai(user_text, patient, st.session_state.language)
             st.session_state.chat.append({"role":"assistant","content":reply})
-            st.experimental_rerun()
 
         # ===== Download PDF =====
         if st.session_state.final_rx:
