@@ -1,4 +1,4 @@
-import os, uuid, sqlite3, tempfile
+import os, uuid, sqlite3, tempfile, hashlib
 import streamlit as st
 import speech_recognition as sr
 from groq import Groq
@@ -19,14 +19,12 @@ st.set_page_config(
 st.markdown("""
 <style>
 body { background-color: #f5f9ff; }
-
 .patient-card, .chat-card {
     background: white;
     padding: 20px;
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
 }
-
 .arrow-btn button {
     border-radius: 50%;
     width: 44px;
@@ -36,7 +34,6 @@ body { background-color: #f5f9ff; }
     color: white;
     border: none;
 }
-
 .arrow-btn button:hover {
     background-color: #0d47a1;
 }
@@ -69,8 +66,9 @@ st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
 st.session_state.setdefault("uploads", [])
+st.session_state.setdefault("last_audio_hash", None)  # ✅ NEW
 
-# ================= VOICE (UPDATED SAFELY) =================
+# ================= VOICE =================
 def voice_to_text(audio, lang):
     r = sr.Recognizer()
     with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -86,17 +84,15 @@ def voice_to_text(audio, lang):
     except:
         return None
 
+def audio_hash(audio):
+    return hashlib.md5(audio.getvalue()).hexdigest()
+
 # ================= PDF =================
 def create_pdf(patient, rx):
     file = "Prescription.pdf"
-    doc = SimpleDocTemplate(
-        file,
-        pagesize=A4,
-        rightMargin=2*cm,
-        leftMargin=2*cm,
-        topMargin=2*cm,
-        bottomMargin=2*cm
-    )
+    doc = SimpleDocTemplate(file, pagesize=A4,
+        rightMargin=2*cm,leftMargin=2*cm,
+        topMargin=2*cm,bottomMargin=2*cm)
     styles = getSampleStyleSheet()
     story = []
 
@@ -121,7 +117,6 @@ Date: {datetime.now().strftime('%d-%b-%Y')}
 
     story.append(Spacer(1,20))
     story.append(Paragraph("<b>Doctor Signature</b><br/>AI Virtual Doctor", styles["Normal"]))
-
     doc.build(story)
     return file
 
@@ -130,9 +125,7 @@ def doctor_ai(text, patient, lang):
     prompt = f"""
 You are a professional medical doctor.
 Ask ONLY ONE question at a time.
-Ask follow-up questions dynamically based on patient answers.
-When sufficient information is collected, provide a FINAL PRESCRIPTION
-with clear headings.
+When enough info is collected, provide FINAL PRESCRIPTION.
 
 Language: {lang}
 Patient: {patient[1]}, {patient[2]} years, {patient[3]}
@@ -150,7 +143,6 @@ Patient: {patient[1]}, {patient[2]} years, {patient[3]}
     reply = res.choices[0].message.content.strip()
     if "FINAL PRESCRIPTION" in reply.upper():
         st.session_state.final_rx = reply
-
     return reply
 
 # ================= WELCOME =================
@@ -194,19 +186,11 @@ else:
     c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
     patient = c.fetchone()
 
-    # ===== Arrow Toggle =====
-    st.markdown("<div class='arrow-btn'>", unsafe_allow_html=True)
-    if st.button("<<" if st.session_state.show_patient else ">>"):
-        st.session_state.show_patient = not st.session_state.show_patient
-        st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
     if st.session_state.show_patient:
-        left, right = st.columns([1.5, 3.5])
+        left, right = st.columns([1.5,3.5])
     else:
         right = st.container()
 
-    # ===== Patient Info =====
     if st.session_state.show_patient:
         with left:
             st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
@@ -220,7 +204,6 @@ else:
             st.write(f"**Language:** {patient[7]}")
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # ===== Chat =====
     with right:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
         st.subheader("💬 Doctor Consultation")
@@ -229,28 +212,23 @@ else:
             st.chat_message(m["role"]).write(m["content"])
 
         mic, upload = st.columns([1,3])
-
         with mic:
             audio = st.audio_input("🎤")
-
         with upload:
-            files = st.file_uploader(
-                "📎 Upload Reports / Images",
-                accept_multiple_files=True,
-                type=["png","jpg","jpeg","pdf"]
-            )
-            if files:
-                st.session_state.uploads.extend(files)
+            st.file_uploader("📎 Upload Reports", accept_multiple_files=True)
 
         user_text = st.chat_input("Describe your problem")
 
-        # ✅ UPDATED VOICE HANDLING (SAFE)
+        # ✅ SAFE MIC PROCESSING (NO LOOP)
         if audio:
-            voice_text = voice_to_text(audio, st.session_state.language)
-            if voice_text:
-                user_text = voice_text
-            else:
-                st.warning("⚠️ Voice unclear, please type")
+            h = audio_hash(audio)
+            if h != st.session_state.last_audio_hash:
+                st.session_state.last_audio_hash = h
+                voice_text = voice_to_text(audio, st.session_state.language)
+                if voice_text:
+                    user_text = voice_text
+                else:
+                    st.warning("⚠️ Voice unclear, please type")
 
         if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
@@ -260,12 +238,7 @@ else:
 
         if st.session_state.final_rx:
             pdf = create_pdf(patient, st.session_state.final_rx)
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    "⬇ Download Prescription PDF",
-                    data=f,
-                    file_name="Prescription.pdf",
-                    mime="application/pdf"
-                )
+            with open(pdf,"rb") as f:
+                st.download_button("⬇ Download Prescription PDF", f, "Prescription.pdf")
 
         st.markdown("</div>", unsafe_allow_html=True)
