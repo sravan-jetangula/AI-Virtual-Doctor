@@ -26,6 +26,16 @@ body { background-color: #f5f9ff; }
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
 }
 
+.arrow-btn button {
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+    background-color: #1565c0;
+    color: white;
+    border: none;
+}
+
 .chat-container {
     height: 420px;
     overflow-y: auto;
@@ -51,23 +61,13 @@ body { background-color: #f5f9ff; }
     align-self: flex-start;
     max-width: 70%;
 }
-
-.arrow-btn button {
-    border-radius: 50%;
-    width: 44px;
-    height: 44px;
-    font-size: 20px;
-    background-color: #1565c0;
-    color: white;
-    border: none;
-}
 </style>
 """, unsafe_allow_html=True)
 
 # ================= GROQ =================
 API_KEY = os.getenv("GROQ_API_KEY")
 if not API_KEY:
-    st.error("GROQ_API_KEY not set")
+    st.error("❌ GROQ_API_KEY not set")
     st.stop()
 client = Groq(api_key=API_KEY)
 
@@ -111,28 +111,37 @@ def voice_to_text(audio, lang):
 # ================= PDF =================
 def create_pdf(patient, rx):
     file = "Prescription.pdf"
-    doc = SimpleDocTemplate(file, pagesize=A4)
+    doc = SimpleDocTemplate(
+        file,
+        pagesize=A4,
+        rightMargin=2*cm,
+        leftMargin=2*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm
+    )
     styles = getSampleStyleSheet()
     story = []
 
     story.append(Paragraph("<b>AI VIRTUAL DOCTOR – PRESCRIPTION</b>", styles["Title"]))
     story.append(Spacer(1,12))
 
-    story.append(Paragraph(
-        f"""
-        Name: {patient[1]}<br/>
-        Age/Gender: {patient[2]} / {patient[3]}<br/>
-        Phone: {patient[4]}<br/>
-        Weight: {patient[5]} kg<br/>
-        Allergy: {patient[6]}<br/>
-        Date: {datetime.now().strftime('%d-%b-%Y')}
-        """, styles["Normal"]
-    ))
+    story.append(Paragraph(f"""
+<b>Patient Details</b><br/>
+Name: {patient[1]}<br/>
+Age/Gender: {patient[2]} / {patient[3]}<br/>
+Phone: {patient[4]}<br/>
+Weight: {patient[5]} kg<br/>
+Allergy: {patient[6]}<br/>
+Date: {datetime.now().strftime('%d-%b-%Y')}
+""", styles["Normal"]))
 
     story.append(Spacer(1,12))
     for part in rx.split("\n\n"):
         story.append(Paragraph(part.replace("\n","<br/>"), styles["Normal"]))
         story.append(Spacer(1,10))
+
+    story.append(Spacer(1,20))
+    story.append(Paragraph("<b>Doctor Signature</b><br/>AI Virtual Doctor", styles["Normal"]))
 
     doc.build(story)
     return file
@@ -141,8 +150,9 @@ def create_pdf(patient, rx):
 def doctor_ai(user_text, patient, lang):
     prompt = f"""
 You are a professional medical doctor.
-Ask only ONE question at a time.
-Provide FINAL PRESCRIPTION when sufficient info is collected.
+Ask ONLY ONE question at a time.
+Ask follow-up questions dynamically.
+Provide FINAL PRESCRIPTION when ready.
 
 Language: {lang}
 Patient: {patient[1]}, {patient[2]} years, {patient[3]}
@@ -165,27 +175,29 @@ Patient: {patient[1]}, {patient[2]} years, {patient[3]}
 # ================= WELCOME =================
 if st.session_state.page == "welcome":
     st.markdown("""
-    <div style="padding:70px;text-align:center;">
+    <div style="background:linear-gradient(135deg,#1565c0,#42a5f5);
+    padding:70px;border-radius:25px;color:white;text-align:center;">
     <h1>🩺 AI Virtual Doctor</h1>
+    <p>Smart • Secure • Professional Healthcare Assistant</p>
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("Start Consultation"):
+    if st.button("🚀 Start Consultation", use_container_width=True):
         st.session_state.page = "register"
 
 # ================= REGISTER =================
 elif st.session_state.page == "register":
-    st.header("Patient Registration")
+    st.header("📝 Patient Registration")
 
     name = st.text_input("Name")
     age = st.number_input("Age",1,120)
     gender = st.selectbox("Gender",["Male","Female"])
     phone = st.text_input("Phone")
-    weight = st.text_input("Weight")
-    allergy = st.text_input("Allergy")
+    weight = st.text_input("Weight (kg)")
+    allergy = st.text_input("Any Allergy")
     lang = st.selectbox("Language",["English","Hindi","Telugu"])
 
-    if st.button("Proceed"):
+    if st.button("Proceed to Consultation"):
         pid = str(uuid.uuid4())[:8]
         c.execute("INSERT INTO patients VALUES (?,?,?,?,?,?,?,?)",
                   (pid,name,age,gender,phone,weight,allergy,lang))
@@ -201,30 +213,36 @@ else:
 
     left, right = st.columns([1.5, 3.5])
 
+    # ===== Patient Info =====
     with left:
+        if st.button("<<" if st.session_state.show_patient else ">>"):
+            st.session_state.show_patient = not st.session_state.show_patient
+
         if st.session_state.show_patient:
             st.markdown("<div class='patient-card'>", unsafe_allow_html=True)
-            st.subheader("Patient Information")
-            st.write(f"Name: {patient[1]}")
-            st.write(f"Age: {patient[2]}")
-            st.write(f"Gender: {patient[3]}")
-            st.write(f"Phone: {patient[4]}")
-            st.write(f"Weight: {patient[5]}")
-            st.write(f"Allergy: {patient[6]}")
+            st.subheader("👤 Patient Information")
+            st.write(f"**Name:** {patient[1]}")
+            st.write(f"**Age:** {patient[2]}")
+            st.write(f"**Gender:** {patient[3]}")
+            st.write(f"**Phone:** {patient[4]}")
+            st.write(f"**Weight:** {patient[5]} kg")
+            st.write(f"**Allergy:** {patient[6]}")
+            st.write(f"**Language:** {patient[7]}")
             st.markdown("</div>", unsafe_allow_html=True)
 
+    # ===== Chat Area =====
     with right:
         st.markdown("<div class='chat-card'>", unsafe_allow_html=True)
+
         st.markdown("<h2>🩺 Doctor Consultation</h2>", unsafe_allow_html=True)
 
-        # Chat Messages
         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
         for m in st.session_state.chat:
             cls = "user-msg" if m["role"]=="user" else "assistant-msg"
-            st.markdown(f'<div class="{cls}">{m["content"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="{cls}">{m["content"].replace("\n","<br>")}</div>',
+                        unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Text Input
         user_text = st.chat_input("Type your message")
         if user_text:
             st.session_state.chat.append({"role":"user","content":user_text})
@@ -232,19 +250,17 @@ else:
             st.session_state.chat.append({"role":"assistant","content":reply})
             st.experimental_rerun()
 
-        # Mic
-        audio = st.audio_input("Click to record")
+        audio = st.audio_input("🎤 Click to record")
         if audio:
-            text = voice_to_text(audio, st.session_state.language)
-            if text:
-                st.session_state.chat.append({"role":"user","content":text})
-                reply = doctor_ai(text, patient, st.session_state.language)
+            voice_text = voice_to_text(audio, st.session_state.language)
+            if voice_text:
+                st.session_state.chat.append({"role":"user","content":voice_text})
+                reply = doctor_ai(voice_text, patient, st.session_state.language)
                 st.session_state.chat.append({"role":"assistant","content":reply})
                 st.experimental_rerun()
 
-        # Upload
         files = st.file_uploader(
-            "Upload Reports / Images",
+            "📎 Upload Reports / Images",
             accept_multiple_files=True,
             type=["png","jpg","jpeg","pdf"]
         )
