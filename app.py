@@ -182,7 +182,7 @@ else:
 
     # 🔘 SIMPLE TOGGLE BUTTON (NO ARROWS, NO TEXT)
     with st.container():
-        if st.button("Hide Patient Info" if st.session_state.show_patient else "Show Patient Info"):
+        if st.button("<<" if st.session_state.show_patient else ">>"):
             st.session_state.show_patient = not st.session_state.show_patient
             st.rerun()
 
