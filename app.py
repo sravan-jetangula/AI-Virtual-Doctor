@@ -161,7 +161,7 @@ else:
 
     # 🔁 TOGGLE BUTTON
     st.markdown("<div class='toggle-btn'>", unsafe_allow_html=True)
-    if st.button("<<" if st.session_state.show_patient else ">> "):
+    if st.button("<<" if st.session_state. else ">> "):
         st.session_state.show_patient = not st.session_state.show_patient
         st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
