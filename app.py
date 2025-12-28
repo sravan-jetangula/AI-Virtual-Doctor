@@ -1,4 +1,4 @@
-import os, uuid, sqlite3, tempfile
+import os, uuid, sqlite3
 import streamlit as st
 from groq import Groq
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -20,22 +20,19 @@ body { background-color: #f5f9ff; }
     border-radius: 15px;
     box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
 }
-.arrow-btn button {
-    border-radius: 50%;
-    width: 42px;
-    height: 42px;
-    font-size: 20px;
+.toggle-btn button {
     background-color: #1565c0;
     color: white;
+    border-radius: 20px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= GROQ (SAFE) =================
+# ================= GROQ =================
 API_KEY = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=API_KEY) if API_KEY else None
 
-# ================= DATABASE (SAFE) =================
+# ================= DATABASE =================
 conn = sqlite3.connect("patients.db", check_same_thread=False)
 c = conn.cursor()
 c.execute("""
@@ -52,6 +49,7 @@ st.session_state.setdefault("page", "welcome")
 st.session_state.setdefault("chat", [])
 st.session_state.setdefault("final_rx", None)
 st.session_state.setdefault("show_patient", True)
+st.session_state.setdefault("uploaded_files", [])
 
 # ================= PDF =================
 def create_pdf(patient, rx):
@@ -88,7 +86,11 @@ Date: {datetime.now().strftime('%d-%b-%Y')}
 # ================= AI =================
 def doctor_ai(text, patient, lang):
     if not client:
-        return "⚠️ AI service not configured. Please add GROQ_API_KEY."
+        return "⚠️ AI service not configured."
+
+    report_note = ""
+    if st.session_state.uploaded_files:
+        report_note = f"\nPatient has uploaded {len(st.session_state.uploaded_files)} medical report(s)."
 
     prompt = f"""
 You are a professional medical doctor.
@@ -97,7 +99,9 @@ When enough info is collected, provide FINAL PRESCRIPTION.
 
 Language: {lang}
 Patient: {patient[1]}, {patient[2]} years, {patient[3]}
+{report_note}
 """
+
     messages = [{"role":"system","content":prompt}] + st.session_state.chat
     messages.append({"role":"user","content":text})
 
@@ -155,6 +159,13 @@ else:
     c.execute("SELECT * FROM patients WHERE id=?", (st.session_state.pid,))
     patient = c.fetchone()
 
+    # 🔁 TOGGLE BUTTON
+    st.markdown("<div class='toggle-btn'>", unsafe_allow_html=True)
+    if st.button("<<Hide Patient Info" if st.session_state.show_patient else ">> Show Patient Info"):
+        st.session_state.show_patient = not st.session_state.show_patient
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if st.session_state.show_patient:
         left, right = st.columns([1.4,3.6])
     else:
@@ -175,6 +186,17 @@ else:
 
         for m in st.session_state.chat:
             st.chat_message(m["role"]).write(m["content"])
+
+        # 📎 FILE UPLOAD (NEW)
+        uploaded = st.file_uploader(
+            "📎 Upload medical reports (PDF / Images)",
+            type=["pdf","png","jpg","jpeg"],
+            accept_multiple_files=True
+        )
+
+        if uploaded:
+            st.session_state.uploaded_files = uploaded
+            st.success(f"{len(uploaded)} file(s) uploaded successfully")
 
         user_text = st.chat_input("Describe your problem")
 
